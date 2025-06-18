@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# File containing JSON data
+JSON_FILE="data.json"
+
+# Check if file exists and is not empty
+if [ ! -s "$JSON_FILE" ]; then
+    echo "Error: $JSON_FILE does not exist or is empty."
+    exit 1
+fi
+
+# Extract and format data
+NAME=$(jq -r '.name' "$JSON_FILE" | sed 's/.*/\u&/')
+HEIGHT=$(jq '.height' "$JSON_FILE" | awk '{printf "%.1f", $1 / 10}')
+WEIGHT=$(jq '.weight' "$JSON_FILE" | awk '{printf "%.0f", $1 / 10}')
+TYPE=$(jq -r '.types[0].type.name' "$JSON_FILE" | sed 's/.*/\u&/')
+
+# Output
+echo "$NAME is of type $TYPE, weighs ${WEIGHT}kg, and is ${HEIGHT}m tall."

@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# Config
+API_URL="https://pokeapi.co/api/v2/pokemon"
+POKEMON_LIST=(bulbasaur ivysaur venusaur charmander charmeleon)
+DATA_DIR="pokemon_data"
+ERROR_LOG="batch_errors.txt"
+DELAY=2
+MAX_RETRIES=3
+
+mkdir -p "$DATA_DIR"
+> "$ERROR_LOG"
+
+# Logging
+log()      { echo "$(date '+%Y-%m-%d %H:%M:%S') - $*"; }
+log_error() { log "$*" | tee -a "$ERROR_LOG" >&2; }
+
+# Fetch function
+fetch_pokemon() {
+    local name="$1"
+    local file="$2"
+    local retries=0
+    local wait=5
+
+    while (( retries < MAX_RETRIES )); do
+        status=$(curl -s -w "%{http_code}" -o "$file" "$API_URL/$name")
+        case "$status" in
+            200)
+                jq empty "$file" 2>/dev/null && return 0 || log_error "Invalid JSON for $name"
+                ;;
+            404) log_error "$name not found (404)"; return 1 ;;
+            429) log_error "Rate limit hit. Waiting $waits..."; ;;
+            5*)  log_error "Server error $status for $name"; ;;
+            *)   log_error "Unexpected status $status for $name"; ;;
+        esac
+        (( retries++ ))
+        (( retries < MAX_RETRIES )) && log "Retry $retries/$MAX_RETRIES after $waits..." && sleep "$wait" && (( wait *= 2 ))
+    done
+    log_error "Failed to retrieve $name after $MAX_RETRIES attempts"
+    rm -f "$file"
+    return 1
+}
+
+# Main loop
+echo "Starting batch retrieval..."
+for name in "${POKEMON_LIST[@]}"; do
+    file="$DATA_DIR/${name}.json"
+    echo -e "\nFetching $name..."
+    fetch_pokemon "$name" "$file"
+
+    [[ ! -s "$file" ]] && log_error "Empty file for $name" && rm -f "$file"
+    sleep "$DELAY"
+done
+
+# Summary
+echo -e "\nBatch complete."
+[[ -s "$ERROR_LOG" ]] && echo "Errors logged in $ERROR_LOG" && tail -n 3 "$ERROR_LOG" || echo "✅ All Pokémon retrieved successfully."
+echo -e "\nFiles downloaded:"
+ls -lh "$DATA_DIR"

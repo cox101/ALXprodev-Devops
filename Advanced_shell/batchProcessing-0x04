@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Configuration
+API_BASE_URL="https://pokeapi.co/api/v2/pokemon"
+DATA_DIR="pokemon_data"
+ERROR_LOG="parallel_errors.txt"
+POKEMON_LIST=(bulbasaur ivysaur venusaur charmander charmeleon)
+
+# Ensure data directory exists
+mkdir -p "$DATA_DIR"
+> "$ERROR_LOG"
+
+# Function to fetch data for a single Pokémon
+fetch_pokemon() {
+    local name="$1"
+    local file="${DATA_DIR}/${name}.json"
+    
+    # Fetch data silently and check HTTP status
+    status=$(curl -s -w "%{http_code}" -o "$file" "${API_BASE_URL}/${name}")
+    
+    if [ "$status" -ne 200 ]; then
+        echo "$(date '+%F %T') - Error fetching $name (HTTP $status)" >> "$ERROR_LOG"
+        rm -f "$file"
+    elif ! jq empty "$file" &>/dev/null; then
+        echo "$(date '+%F %T') - Invalid JSON for $name" >> "$ERROR_LOG"
+        rm -f "$file"
+    else
+        echo "Downloaded: $name"
+    fi
+}
+
+# Main execution
+echo -e "\n Starting parallel download..."
+
+# Loop through Pokémon and fetch data in background
+for name in "${POKEMON_LIST[@]}"; do
+    echo "Fetching $name..."
+    fetch_pokemon "$name" &
+done
+
+# Wait for all background processes to finish
+wait
+
+# Final report
+echo -e "\n All downloads complete."
+
+if [ -s "$ERROR_LOG" ]; then
+    echo " Some errors occurred. See $ERROR_LOG:"
+    tail -n 3 "$ERROR_LOG"
+else
+    echo " All Pokémon fetched successfully!"
+    rm "$ERROR_LOG"
+fi
+
+echo -e "\n Downloaded files:"
+ls -1 "$DATA_DIR"
